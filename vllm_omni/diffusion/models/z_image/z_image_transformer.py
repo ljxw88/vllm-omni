@@ -678,7 +678,13 @@ class ZImageTransformer2DModel(nn.Module):
             (".w13", ".w3", 1),
         ]
 
-        params_dict = dict(self.named_parameters())
+        # Some checkpoints (e.g., quantized exports) may contain extra tensors
+        # for quantizer metadata (like *_quantizer._amax). These may be buffers
+        # or may not exist in this module at all. We load what we can and ignore
+        # unexpected keys to avoid failing model initialization.
+        params_dict: dict[str, torch.Tensor] = {}
+        params_dict.update(dict(self.named_parameters()))
+        params_dict.update(dict(self.named_buffers()))
 
         loaded_params = set[str]()
         for name, loaded_weight in weights:
@@ -686,12 +692,17 @@ class ZImageTransformer2DModel(nn.Module):
                 if weight_name not in name:
                     continue
                 name = name.replace(weight_name, param_name)
-                param = params_dict[name]
+                param = params_dict.get(name)
+                if param is None:
+                    # Ignore checkpoint entries that don't exist in the model.
+                    break
                 weight_loader = param.weight_loader
                 weight_loader(param, loaded_weight, shard_id)
                 break
             else:
-                param = params_dict[name]
+                param = params_dict.get(name)
+                if param is None:
+                    continue
                 weight_loader = getattr(param, "weight_loader", default_weight_loader)
                 weight_loader(param, loaded_weight)
             loaded_params.add(name)
