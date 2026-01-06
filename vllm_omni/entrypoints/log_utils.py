@@ -509,8 +509,22 @@ class OrchestratorMetrics:
         self,
         stage_id: int,
         req_id: Any,
-        req_start_ts: float,
+        *args: Any,
     ) -> None:
+        # Backwards/forwards compatible with both call patterns:
+        # - on_finalize_request(stage_id, req_id, req_start_ts)
+        # - on_finalize_request(stage_id, req_id, engine_outputs, req_start_ts)
+        if len(args) == 1:
+            req_start_ts = args[0]
+        elif len(args) == 2:
+            # engine_outputs is currently unused by metrics, but some call
+            # sites pass it; keep it to avoid signature mismatches.
+            _engine_outputs, req_start_ts = args
+        else:
+            raise TypeError(
+                f"on_finalize_request() expected 1 or 2 extra args, got {len(args)}"
+            )
+
         rid_key = str(req_id)
         _t0 = float(req_start_ts)
         _t1 = time.time()
